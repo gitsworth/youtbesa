@@ -1,61 +1,51 @@
-# app.py
 import streamlit as st
-import pandas as pd
-import requests
-import os
+from googleapiclient.discovery import build
 from textblob import TextBlob
+import pandas as pd
 
-# Set up API key from Streamlit secrets
-YOUTUBE_API_KEY = st.secrets.get("AIzaSyA_UYJFlW6XHH2r2rENeFu9UC5V5Y3z1zo", "")
+st.title("YouTube Video Comments Sentiment Analyzer")
 
-st.set_page_config(page_title="YouTube Sentiment Analyzer", layout="wide")
-st.title("🔍 YouTube Video Comment Sentiment Analyzer")
+api_key = st.text_input("Enter your YouTube API Key", type="password")
+video_id = st.text_input("Enter YouTube Video ID (e.g. dQw4w9WgXcQ)")
 
-# Input YouTube video ID or full URL
-youtube_url = st.text_input("Enter YouTube Video URL or ID:", "https://www.youtube.com/watch?v=dQw4w9WgXcQ")
+if api_key and video_id:
+    try:
+        youtube = build('youtube', 'v3', developerKey=api_key)
+        
+        comments = []
+        request = youtube.commentThreads().list(
+            part="snippet",
+            videoId=video_id,
+            maxResults=100,
+            textFormat="plainText"
+        )
+        response = request.execute()
 
-# Extract video ID from URL
-import re
-match = re.search(r"(?:v=|youtu.be/)([\w-]+)", youtube_url)
-video_id = match.group(1) if match else youtube_url
+        for item in response.get('items', []):
+            comment = item['snippet']['topLevelComment']['snippet']['textDisplay']
+            comments.append(comment)
 
-# Fetch comments from YouTube API
-def get_comments(video_id, api_key, max_results=50):
-    comments = []
-    url = f"https://www.googleapis.com/youtube/v3/commentThreads?key={api_key}&textFormat=plainText&part=snippet&videoId={video_id}&maxResults={max_results}"
-    response = requests.get(url)
-    if response.status_code != 200:
-        return []
-    data = response.json()
-    for item in data.get("items", []):
-        comment = item["snippet"]["topLevelComment"]["snippet"]["textDisplay"]
-        comments.append(comment)
-    return comments
+        if not comments:
+            st.warning("No comments found for this video.")
+        else:
+            df = pd.DataFrame(comments, columns=['Comment'])
+            df['Polarity'] = df['Comment'].apply(lambda x: TextBlob(x).sentiment.polarity)
+            df['Sentiment'] = df['Polarity'].apply(
+                lambda x: 'Positive' if x > 0 else ('Negative' if x < 0 else 'Neutral'))
+            
+            st.dataframe(df)
 
-# Analyze sentiment with TextBlob
-def analyze_sentiment(comment):
-    blob = TextBlob(comment)
-    polarity = blob.sentiment.polarity
-    if polarity > 0:
-        return "Positive"
-    elif polarity < 0:
-        return "Negative"
-    else:
-        return "Neutral"
+            st.write("### Sentiment Summary")
+            st.bar_chart(df['Sentiment'].value_counts())
 
-# If API key present and valid input
-if YOUTUBE_API_KEY and video_id:
-    comments = get_comments(video_id, YOUTUBE_API_KEY)
-    if not comments:
-        st.error("No comments found or invalid video ID/API key.")
-    else:
-        df = pd.DataFrame(comments, columns=["Comment"])
-        df["Sentiment"] = df["Comment"].apply(analyze_sentiment)
+            st.write("### Example Comments by Sentiment")
+            for sentiment in ['Positive', 'Neutral', 'Negative']:
+                st.write(f"**{sentiment} comments:**")
+                examples = df[df['Sentiment'] == sentiment]['Comment'].head(3).tolist()
+                for c in examples:
+                    st.write(f"- {c}")
 
-        st.write(f"Fetched {len(df)} comments. Sentiment breakdown:")
-        st.dataframe(df)
-
-        sentiment_counts = df["Sentiment"].value_counts()
-        st.bar_chart(sentiment_counts)
+    except Exception as e:
+        st.error(f"An error occurred: {e}")
 else:
-    st.info("Please enter a valid YouTube video URL and ensure API key is set.")
+    st.info("Please enter your API key and a YouTube video ID.")
