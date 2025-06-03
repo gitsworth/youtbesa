@@ -6,7 +6,7 @@ import os
 from textblob import TextBlob
 
 # Set up API key from Streamlit secrets
-YOUTUBE_API_KEY = st.secrets.get("YOUTUBE_API_KEY", "")
+YOUTUBE_API_KEY = st.secrets.get("AIzaSyA_UYJFlW6XHH2r2rENeFu9UC5V5Y3z1zo", "")
 
 st.set_page_config(page_title="YouTube Sentiment Analyzer", layout="wide")
 st.title("🔍 YouTube Video Comment Sentiment Analyzer")
